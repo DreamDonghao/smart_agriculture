@@ -24,8 +24,8 @@ public:
         m_light = data["light"].d();
 
         m_co2 = data["co2"].d();
-        m_fanStatus = data["fanStatus"].i();
-        pump_status = data["pumpStatus"].i();
+        m_fanStatus = data["fan_status"].i();
+        pump_status = data["pump_status"].i();
 
     }
 
@@ -41,7 +41,7 @@ public:
         json["light"] = m_light;
 
         json["co2"] = m_co2;
-        json["m_fanStatus"] = m_fanStatus;
+        json["fan_status"] = m_fanStatus;
         json["pump_status"] = pump_status;
 
 
@@ -67,8 +67,8 @@ private:
     double m_phosphorus = 0.0;
     double m_potassium = 0.0;
     double m_light = 0.0;
-    int m_fanStatus = 0;
-    int pump_status = 0;
+    int64_t m_fanStatus = 0;
+    int64_t pump_status = 0;
 };
 
 
