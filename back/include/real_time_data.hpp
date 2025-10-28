@@ -3,9 +3,10 @@
 //
 #ifndef REAL_TIME_DATA_HPP
 #define REAL_TIME_DATA_HPP
-#include <atomic>
+#include <mutex>
 #include <crow.h>
 #include <nlohmann/json.hpp>
+
 class RealTimeData {
 public:
     RealTimeData() = default;
@@ -13,26 +14,42 @@ public:
     ~RealTimeData() = default;
 
     void loadForJson(const crow::json::rvalue &data) {
-        m_temperature.store(data["temperature"].d());
-        m_humidity.store(data["humidity"].d());
-        m_ph.store(data["ph"].d());
-        m_nitrogen.store(data["nitrogen"].d());
-        m_phosphorus.store(data["phosphorus"].d());
-        m_potassium.store(data["potassium"].d());
-        m_light.store(data["light"].d());
+        std::scoped_lock lock(m_mutex);
+        m_temperature = data["temperature"].d();
+        m_humidity = data["humidity"].d();
+        m_ph = data["ph"].d();
+        m_nitrogen = data["nitrogen"].d();
+        m_phosphorus = data["phosphorus"].d();
+        m_potassium = data["potassium"].d();
+        m_light = data["light"].d();
+
+        m_co2 = data["co2"].d();
+        m_fanStatus = data["fanStatus"].i();
+        pump_status = data["pumpStatus"].i();
+
     }
+
     nlohmann::json getJson() const {
+        std::scoped_lock lock(m_mutex);
         nlohmann::json json;
-        json["temperature"] = m_temperature.load();
-        json["humidity"] = m_humidity.load();
-        json["ph"] = m_ph.load();
-        json["nitrogen"] = m_nitrogen.load();
-        json["phosphorus"] = m_phosphorus.load();
-        json["potassium"] = m_potassium.load();
-        json["light"] = m_light.load();
+        json["temperature"] = m_temperature;
+        json["humidity"] = m_humidity;
+        json["ph"] = m_ph;
+        json["nitrogen"] = m_nitrogen;
+        json["phosphorus"] = m_phosphorus;
+        json["potassium"] = m_potassium;
+        json["light"] = m_light;
+
+        json["co2"] = m_co2;
+        json["m_fanStatus"] = m_fanStatus;
+        json["pump_status"] = pump_status;
+
+
         return json;
     }
+
 private:
+    mutable std::mutex m_mutex;
     /*
     temperature:float   # 温度
     humidity:float      # 湿度
@@ -42,13 +59,16 @@ private:
     potassium:float     # 钾
     light:float         # 光照强度
     */
-    std::atomic<double> m_temperature;
-    std::atomic<double> m_humidity;
-    std::atomic<double> m_ph;
-    std::atomic<double> m_nitrogen;
-    std::atomic<double> m_phosphorus;
-    std::atomic<double> m_potassium;
-    std::atomic<double> m_light;
+    double m_temperature = 0.0;
+    double m_humidity = 0.0;
+    double m_co2 = 0.0;
+    double m_ph = 0.0;
+    double m_nitrogen = 0.0;
+    double m_phosphorus = 0.0;
+    double m_potassium = 0.0;
+    double m_light = 0.0;
+    int m_fanStatus = 0;
+    int pump_status = 0;
 };
 
 
