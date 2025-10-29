@@ -44,7 +44,6 @@ public:
         json["fan_status"] = m_fanStatus;
         json["pump_status"] = pump_status;
 
-
         return json;
     }
 
