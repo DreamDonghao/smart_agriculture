@@ -15,6 +15,7 @@ public:
 
     void loadForJson(const crow::json::rvalue &data) {
         std::scoped_lock lock(m_mutex);
+        m_deviceId = data["device_id"].s();
         m_temperature = data["temperature"].d();
         m_humidity = data["humidity"].d();
         m_ph = data["ph"].d();
@@ -22,16 +23,15 @@ public:
         m_phosphorus = data["phosphorus"].d();
         m_potassium = data["potassium"].d();
         m_light = data["light"].d();
-
         m_co2 = data["co2"].d();
         m_fanStatus = data["fan_status"].i();
         pump_status = data["pump_status"].i();
-
     }
 
     nlohmann::json getJson() const {
         std::scoped_lock lock(m_mutex);
         nlohmann::json json;
+        json["device_id"] = m_deviceId;
         json["temperature"] = m_temperature;
         json["humidity"] = m_humidity;
         json["ph"] = m_ph;
@@ -39,7 +39,6 @@ public:
         json["phosphorus"] = m_phosphorus;
         json["potassium"] = m_potassium;
         json["light"] = m_light;
-
         json["co2"] = m_co2;
         json["fan_status"] = m_fanStatus;
         json["pump_status"] = pump_status;
@@ -58,6 +57,7 @@ private:
     potassium:float     # 钾
     light:float         # 光照强度
     */
+    std::string m_deviceId;
     double m_temperature = 0.0;
     double m_humidity = 0.0;
     double m_co2 = 0.0;

@@ -1,293 +1,395 @@
-<template>
-  <div class="dashboard">
-    <h2>环境监测面板</h2>
-    
-    <div class="info-panel" v-if="data">
-      <div class="item" v-for="(value, key) in data" :key="key">
-        <strong>{{ labels[key] }}</strong>
-        <span>{{ formatValue(value, key) }}</span>
-      </div>
-    </div>
-    
-    <div class="charts">
-      <div
-          v-for="(key, idx) in chartKeys"
-          :key="key"
-          class="chart-item"
-          :ref="el => setChartRef(idx, el)"
-      ></div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-  import * as echarts from 'echarts'
-  import {type ComponentPublicInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref} from 'vue'
+  let back_url = "http://127.0.0.1:18080"
+  import {onBeforeUnmount, onMounted, ref} from 'vue'
+  
+  let now_device_id = ref("")
+  let device_ids = ref<Array<string>>([])
+  
+  function updateDevices(): void {
+    const fetchData = async () => {
+      try {
+        const res = await fetch(back_url + '/front/api/get_all_device_ids')
+        if (!res.ok) throw new Error('Network error')
+        const json = await res.json()
+        device_ids.value = json.devices
+      } catch (err) {
+        console.error('获取数据失败:', err)
+      }
+    }
+    fetchData() // 别忘了调用！
+  }
+  
+  function selectDevice(id: string) {
+    now_device_id.value = id
+    fetchData() // 立即获取一次
+    if (timer) clearInterval(timer)
+    timer = setInterval(fetchData, 2000)
+  }
+  
+  
+  updateDevices();
   
   interface EnvData {
-    temperature: number
+    device_id: string
     humidity: number
+    co2: number
     ph: number
-    nitrogen: number
-    phosphorus: number
-    potassium: number
-    light: number
+    nitrogen: number   // 新增
+    phosphorus: number // 新增
+    potassium: number  // 新增
+    pump_status: number
+    fan_status: number
   }
   
-  // 当前数据
   const data = ref<EnvData | null>(null)
-  
-  // 响应式历史数据（确保每个键都有数组）
-  const historyData = reactive({
-    time: [] as string[],
-    temperature: [] as number[],
-    humidity: [] as number[],
-    ph: [] as number[],
-    nitrogen: [] as number[],
-    phosphorus: [] as number[],
-    potassium: [] as number[],
-    light: [] as number[]
-  })
-  
-  // 图表 DOM 引用
-  const chartRefs = ref<(HTMLElement | null)[]>([])
-  
-  // 图表实例
-  const chartInstances = ref<echarts.ECharts[]>([])
-  
-  // 需要绘图的字段
-  const chartKeys: (keyof EnvData)[] = [
-    'temperature', 'humidity', 'ph',
-    'nitrogen', 'phosphorus', 'potassium', 'light'
-  ]
-  
-  // 修改 1：单位更清晰（农业场景）
-  const labels: Record<keyof EnvData, string> = {
-    temperature: '温度 (°C)',
-    humidity: '湿度 (%)',
-    ph: '土壤 pH',
-    nitrogen: '氮 N (mg/L)',
-    phosphorus: '磷 P (mg/L)',
-    potassium: '钾 K (mg/L)',
-    light: '光照 (lux)'
-  }
-  
-  // 修改 2：新增农业合理范围（Y轴用）
-  const ranges: Record<keyof EnvData, { min: number; max: number; interval: number }> = {
-    temperature: { min: 10, max: 40, interval: 5 },
-    humidity: { min: 30, max: 100, interval: 10 },
-    ph: { min: 4.0, max: 9.0, interval: 0.5 },
-    nitrogen: { min: 0, max: 400, interval: 50 },
-    phosphorus: { min: 0, max: 150, interval: 20 },
-    potassium: { min: 0, max: 500, interval: 50 },
-    light: { min: 0, max: 70000, interval: 10000 }
-  }
-  
-  // 定时器引用
   let timer: ReturnType<typeof setInterval> | null = null
   
-  // 正确设置 ref
-  const setChartRef = (
-      idx: number,
-      el: Element | ComponentPublicInstance | null
-  ) => {
-    if (el instanceof HTMLElement) {
-      chartRefs.value[idx] = el
-    }
-  }
-  
-  // 获取数据
   const fetchData = async () => {
-    try {
-      const res = await fetch('http://localhost:18080/api/data')
-      if (!res.ok) throw new Error('Network error')
-      const json: EnvData = await res.json()
-      data.value = json
-      
-      const now = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-      historyData.time.push(now)
-      
-      for (const key of chartKeys) {
-        historyData[key].push(json[key])
-        if (historyData[key].length > 20) historyData[key].shift()
-      }
-      if (historyData.time.length > 20) historyData.time.shift()
-      
-      await nextTick()
-      updateCharts()
-    } catch (err) {
-      console.error('获取数据失败:', err)
-    }
-  }
-  
-  // 更新所有图表
-  const updateCharts = () => {
-    chartKeys.forEach((key, idx) => {
-      const chart = chartInstances.value[idx]
-      const el = chartRefs.value[idx]
-      if (!chart || !el) return
-      
-      const range = ranges[key]  // 使用合理范围
-      
-      chart.setOption({
-        tooltip: { trigger: 'axis' },
-        grid: { left: 50, right: 20, top: 30, bottom: 50 },
-        xAxis: {
-          type: 'category',
-          data: historyData.time,
-          axisLabel: { rotate: 30, fontSize: 11 }
-        },
-        // 修改 3：Y轴使用农业合理范围 + 刻度
-        yAxis: {
-          type: 'value',
-          name: labels[key],
-          nameLocation: 'middle',
-          nameGap: 35,
-          nameTextStyle: { fontSize: 12 },
-          min: range.min,
-          max: range.max,
-          interval: range.interval,
-          axisLabel: {
-            formatter: (v: number) => {
-              if (key === 'ph') return v.toFixed(1)
-              if (key === 'light' && v >= 1000) return (v / 1000) + 'k'
-              return v.toFixed(1)
-            }
-          }
-        },
-        series: [{
-          name: labels[key],
-          data: historyData[key],
-          type: 'line',
-          smooth: true,
-          showSymbol: false,
-          lineStyle: { width: 2 },
-          itemStyle: { color: getColor(key) }
-        }]
-      }, true)
-    })
-  }
-  
-  // 颜色映射
-  const getColor = (key: keyof EnvData): string => {
-    const colors: Record<keyof EnvData, string> = {
-      temperature: '#ff6b6b',
-      humidity: '#4ecdc4',
-      ph: '#45b7d1',
-      nitrogen: '#96ceb4',
-      phosphorus: '#feca57',
-      potassium: '#ff9ff3',
-      light: '#f8d568'
-    }
-    return colors[key]
-  }
-  
-  // 格式化显示值
-  const formatValue = (val: number, key: string): string => {
-    if (key === 'ph') return val.toFixed(2)
-    if (key === 'temperature' || key === 'humidity') return val.toFixed(1)
-    if (key === 'light') return Math.round(val).toLocaleString()
-    return val.toFixed(1)
-  }
-  
-  // 生命周期
-  onMounted(() => {
-    nextTick(() => {
-      // 初始化所有图表
-      chartKeys.forEach((_, idx) => {
-        const el = chartRefs.value[idx]
-        if (el) {
-          chartInstances.value[idx] = echarts.init(el)
+    if (now_device_id.value !== "") {
+      try {
+        const res = await fetch(back_url + '/front/api/data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            device_id: now_device_id.value   // ← 发送 device_id
+          })
+        })
+        if (!res.ok) {
+          throw new Error('Network error')
         }
-      })
-      updateCharts()
-    })
-    
-    fetchData()
-    timer = setInterval(fetchData, 2000)
+        const json = await res.json()
+        now_device_id.value = json.device_id
+        if (!device_ids.value.includes(now_device_id.value)) {
+          device_ids.value.push(now_device_id.value)
+        }
+        data.value = json
+      } catch (err) {
+        console.error('获取数据失败:', err)
+      }
+    }
+  }
+  onMounted(() => {
+    if (now_device_id.value !== "") {
+      fetchData()
+      timer = setInterval(fetchData, 2000)
+    }
   })
   
   onBeforeUnmount(() => {
     if (timer) clearInterval(timer)
-    
-    chartInstances.value.forEach(chart => {
-      if (chart && !chart.isDisposed()) {
-        chart.dispose()
-      }
-    })
-    chartInstances.value = []
   })
+
 </script>
 
+<template>
+  <div class="dashboard">
+    <div class="button-column">
+      <button @click="updateDevices" class="refresh-button">刷新设备</button>
+      
+      <button
+          class="device-id-button"
+          :class="{ active: id === now_device_id }"
+          v-for="id in device_ids"
+          :key="id"
+          @click="selectDevice(id)">
+        {{ id }}
+      </button>
+    </div>
+    
+    <div class="content-panel">
+      
+      <h2>🌿 环境监测面板</h2>
+      <h3>当前设备ID: {{ now_device_id || '未选择设备' }}</h3>
+      
+      <div class="info-panel" v-if="data && now_device_id != ''">
+        <div class="item">
+          <strong>水泵状态</strong>
+          <span :class="data.pump_status ? 'on' : 'off'">
+            {{ data.pump_status ? '开启 💧' : '关闭 🚫' }}
+          </span>
+        </div>
+        
+        <div class="item">
+          <strong>风扇状态</strong>
+          <span :class="data.fan_status ? 'on' : 'off'">
+            {{ data.fan_status ? '开启 💨' : '关闭 💤' }}
+          </span>
+        </div>
+        
+        <div class="item">
+          <strong>湿度 (%)</strong>
+          <span>{{ data.humidity.toFixed(1) }}</span>
+        </div>
+        
+        <div class="item">
+          <strong>二氧化碳浓度 (ppm)</strong>
+          <span>{{ data.co2.toFixed(0) }}</span>
+        </div>
+        
+        <div class="item">
+          <strong>pH 值</strong>
+          <span>{{ data.ph.toFixed(2) }}</span>
+        </div>
+        
+        <div class="item">
+          <strong>氮 (N) mg/L</strong>
+          <span>{{ data.nitrogen.toFixed(1) }}</span>
+        </div>
+        
+        <div class="item">
+          <strong>磷 (P) mg/L</strong>
+          <span>{{ data.phosphorus.toFixed(1) }}</span>
+        </div>
+        
+        <div class="item">
+          <strong>钾 (K) mg/L</strong>
+          <span>{{ data.potassium.toFixed(1) }}</span>
+        </div>
+      </div>
+      
+      <div v-else-if="now_device_id === ''">
+        <p style="text-align: center; margin-top: 50px; color: #666;">请先选择或刷新设备列表。</p>
+      </div>
+    
+    </div>
+  </div>
+</template>
+
+
 <style scoped>
-  .dashboard {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 1.5rem;
-    font-family: "Segoe UI", sans-serif;
+  /* ... :root 保持不变 ... */
+  :root {
+    --primary-color: #3498db;
+    --success-color: #2ecc71;
+    --danger-color: #e74c3c;
+    --bg-sidebar: #f4f4f4;
+    --bg-content: #ffffff;
+    --bg-card: #f8f9fa;
+    --border-color: #ddd;
+    --font-family-base: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    --sidebar-width: 220px;
   }
   
-  h2 {
-    text-align: center;
-    margin-bottom: 1.5rem;
+  /* 整体仪表板布局 */
+  .dashboard {
+    display: flex;
+    flex-direction: row;
+    height: 100vh;
+    min-height: 100vh; /* 确保占据整个视口高度 */
+    font-family: var(--font-family-base);
+    background-color: var(--bg-content);
+  }
+  
+  /* 左侧边栏 (PC 端: 垂直滚动) */
+  .button-column {
+    flex: 0 0 var(--sidebar-width);
+    background-color: var(--bg-sidebar);
+    padding: 1rem;
+    border-right: 1px solid var(--border-color);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  
+  /* 边栏中的按钮样式 (包括刷新和设备按钮) */
+  .button-column button {
+    width: 100%;
+    margin: 6px 0;
+    padding: 0.6rem 0.5rem;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: #ffffff;
     color: #333;
-    font-size: 1.8rem;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    text-align: left;
+    /* 确保按钮不会被 flex 挤压 */
+    flex-shrink: 0;
+  }
+  
+  /* 刷新按钮的额外样式 (PC 端) */
+  .button-column .refresh-button {
+    background-color: #f0f0f0;
+    font-weight: bold;
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    margin-bottom: 12px;
+  }
+  
+  .button-column .refresh-button:hover {
+    background-color: #e0f0ff;
+  }
+  
+  .button-column button:hover {
+    background-color: #e0f7fa;
+    border-color: var(--primary-color);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* 选中状态 */
+  .button-column button.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: bold;
+  }
+  
+  
+  /* 右侧内容面板 (PC 端: 占据剩余宽度，垂直滚动) */
+  .content-panel {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+  
+  /* ... 标题、卡片等样式保持不变 ... */
+  h2 {
+    text-align: left;
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+    color: #2c3e50;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+  }
+  
+  h3 {
+    text-align: left;
+    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+    color: #555;
+    font-weight: normal;
   }
   
   .info-panel {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
   }
   
   .item {
-    background: #f8f9fa;
+    background: var(--bg-card);
     border-radius: 12px;
-    padding: 1rem;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-    transition: transform 0.2s;
+    padding: 1.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    text-align: center;
+    border: 1px solid transparent;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   }
   
   .item:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    border-color: var(--primary-color);
   }
   
   .item strong {
     display: block;
-    color: #666;
-    font-size: 0.9rem;
-    margin-bottom: 0.3rem;
+    color: #555;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
   }
   
   .item span {
-    color: #222;
-    font-weight: bold;
-    font-size: 1.3rem;
+    font-weight: 700;
+    font-size: 1.6rem;
   }
   
-  .charts {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
+  span.on {
+    color: var(--success-color);
   }
   
-  .chart-item {
-    height: 300px;
-    width: 100%;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    overflow: hidden;
+  span.off {
+    color: var(--danger-color);
   }
   
-  /* 响应式优化 */
+  /* 手机端适配 (max-width: 768px) */
   @media (max-width: 768px) {
-    .charts {
-      grid-template-columns: 1fr;
+    .dashboard {
+      flex-direction: column;
+      height: auto; /* 允许根据内容自然撑开 */
+      min-height: 100vh;
     }
-    .chart-item {
-      height: 250px;
+    
+    /* 侧边栏按钮栏的调整 (横向滚动) */
+    .button-column {
+      flex: 0 0 auto;
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid var(--border-color);
+      
+      /* 重点：确保它是横向 flex 容器 */
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      
+      /* 设定最大高度并允许横向滚动，确保它只占据一行 */
+      max-height: 80px; /* 明确设定最大高度，防止其过高 */
+      overflow-x: auto;
+      overflow-y: hidden; /* 隐藏垂直滚动 */
+      
+      justify-content: flex-start;
+      padding: 0.5rem;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* 隐藏滚动条 */
+    .button-column::-webkit-scrollbar {
+      display: none;
+    }
+    .button-column {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    
+    /* 移动端按钮样式 */
+    .button-column button {
+      flex: 0 0 auto;
+      margin: 0 4px;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.9rem;
+      text-align: center;
+      white-space: nowrap;
+      width: auto; /* 宽度由内容决定 */
+    }
+    
+    /* 移动端刷新按钮样式 */
+    .button-column .refresh-button {
+      margin-right: 8px; /* 与第一个设备按钮分隔 */
+      margin-bottom: 0;
+    }
+    
+    /* 右侧内容面板 (移动端: 占据剩余空间，垂直滚动) */
+    .content-panel {
+      flex: 1; /* 确保内容面板占据剩余的垂直空间 */
+      padding: 1rem;
+      overflow-y: auto;
+      max-height: calc(100vh - 80px); /* 视口高度 - 侧边栏最大高度 */
+    }
+    
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    .info-panel {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1rem;
+    }
+    
+    .item {
+      padding: 1rem;
+    }
+    
+    .item span {
+      font-size: 1.3rem;
     }
   }
 </style>

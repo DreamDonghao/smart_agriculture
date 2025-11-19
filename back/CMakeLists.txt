@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.22)
 project(smart_agriculture LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -30,7 +30,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
                 add_definitions(-D_WIN32_WINNT=0x0A01)
             endif()
         endif()
-        add_executable(smart_agriculture main.cpp)
+        add_executable(smart_agriculture src/main.cpp)
 
         target_link_libraries(smart_agriculture PRIVATE Crow::Crow asio::asio)
         target_link_libraries(smart_agriculture PRIVATE unofficial::sqlite3::sqlite3)
@@ -42,7 +42,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         message(FATAL_ERROR "请在Linux下使用g++编译器")
     else()
-        add_executable(smart_agriculture main.cpp
+        add_executable(smart_agriculture src/main.cpp
         )
 
         # vcpkg 的库
