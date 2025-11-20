@@ -1,23 +1,36 @@
 <script setup lang="ts">
+  
   let back_url = "http://127.0.0.1:18080"
   import {onBeforeUnmount, onMounted, ref} from 'vue'
   
   let now_device_id = ref("")
-  let device_ids = ref<Array<string>>([])
+  let device_ids = ref<Array<string>>([]);
+  let device_notes = ref<Map<string, string>>(new Map());
   
   function updateDevices(): void {
     const fetchData = async () => {
       try {
-        const res = await fetch(back_url + '/front/api/get_all_device_ids')
-        if (!res.ok) throw new Error('Network error')
-        const json = await res.json()
-        device_ids.value = json.devices
+        const res = await fetch(back_url + '/front/api/get_all_device_ids');
+        if (!res.ok) throw new Error('Network error');
+        const json = await res.json();
+        
+        device_ids.value = json.devices;
+        
+        device_notes.value.clear(); // 先清空旧数据
+        for (let i = 0; i < json.devices.length; ++i) {
+          const id = json.devices[i];
+          const note = json.notes[i] || id;  // 防止没有 note
+          device_notes.value.set(id, note);
+        }
+        
       } catch (err) {
-        console.error('获取数据失败:', err)
+        console.error('获取数据失败:', err);
       }
     }
-    fetchData() // 别忘了调用！
+    
+    fetchData();
   }
+  
   
   function selectDevice(id: string) {
     now_device_id.value = id
@@ -26,8 +39,31 @@
     timer = setInterval(fetchData, 2000)
   }
   
-  
   updateDevices();
+  
+  let device_note = ref<string>("")
+  
+  async function noteDevice() {
+    const res = await fetch(back_url + "/front/api/note_device", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        device_id: now_device_id.value,
+        device_note: device_note.value
+      })
+    })
+    
+    const data = await res.json()
+    
+    if (data.status === "exist") {
+      alert("❗设备已存在：" + data.message)
+    } else if (data.status === "inserted") {
+      alert("✨新增成功：" + data.message)
+    }
+  }
+  
   
   interface EnvData {
     device_id: string
@@ -94,7 +130,7 @@
           v-for="id in device_ids"
           :key="id"
           @click="selectDevice(id)">
-        {{ id }}
+        {{ device_notes.get(id) }}
       </button>
     </div>
     
@@ -102,8 +138,13 @@
       
       <h2>🌿 环境监测面板</h2>
       <h3>当前设备ID: {{ now_device_id || '未选择设备' }}</h3>
-      
+      <h3>当前设备备注: {{ device_notes.get(now_device_id) || '未选择设备' }}</h3> <div>
+      <input v-model="device_note" placeholder="备注信息"/>
+      <button @click="noteDevice">提交</button>
+    </div>
+      <hr>
       <div class="info-panel" v-if="data && now_device_id != ''">
+       
         <div class="item">
           <strong>水泵状态</strong>
           <span :class="data.pump_status ? 'on' : 'off'">
@@ -273,7 +314,7 @@
     background: var(--bg-card);
     border-radius: 12px;
     padding: 1.5rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     text-align: center;
     border: 1px solid transparent;
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
@@ -281,7 +322,7 @@
   
   .item:hover {
     transform: translateY(-3px);
-    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
     border-color: var(--primary-color);
   }
   
@@ -339,6 +380,7 @@
     .button-column::-webkit-scrollbar {
       display: none;
     }
+    
     .button-column {
       -ms-overflow-style: none;
       scrollbar-width: none;
