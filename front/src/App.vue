@@ -3,37 +3,50 @@
   let back_url = "http://127.0.0.1:18080"
   import {onBeforeUnmount, onMounted, ref} from 'vue'
   
-  let now_device_id = ref("")
+  let now_device_info = ref({
+    id:"null",name:"null",details:"null"
+  })
+  
+  async function getDeviceInfo(id:string){
+    const res = await fetch(back_url+"/front/api/get_device_info/"+id,);
+    try{
+      if(!res.ok){
+        throw new Error("error")
+      }
+      now_device_info.value = await res.json()
+    }catch(err){
+      console.log(err);
+    }
+  }
+  
   let device_ids = ref<Array<string>>([]);
   let device_notes = ref<Map<string, string>>(new Map());
-  
+  let new_device_ids = ref<Array<string>>([]);
   function updateDevices(): void {
     const fetchData = async () => {
       try {
         const res = await fetch(back_url + '/front/api/get_all_device_ids');
         if (!res.ok) throw new Error('Network error');
         const json = await res.json();
-        
         device_ids.value = json.devices;
-        
+        new_device_ids.value = json.new_deviceIds;
         device_notes.value.clear(); // 先清空旧数据
         for (let i = 0; i < json.devices.length; ++i) {
           const id = json.devices[i];
           const note = json.notes[i] || id;  // 防止没有 note
           device_notes.value.set(id, note);
         }
-        
       } catch (err) {
         console.error('获取数据失败:', err);
       }
     }
-    
     fetchData();
   }
   
   
+  
   function selectDevice(id: string) {
-    now_device_id.value = id
+    getDeviceInfo(id)
     fetchData() // 立即获取一次
     if (timer) clearInterval(timer)
     timer = setInterval(fetchData, 2000)
@@ -50,7 +63,7 @@
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        device_id: now_device_id.value,
+        device_id: now_device_info.value.id,
         device_note: device_note.value
       })
     })
@@ -81,7 +94,7 @@
   let timer: ReturnType<typeof setInterval> | null = null
   
   const fetchData = async () => {
-    if (now_device_id.value !== "") {
+    if (now_device_info.value.id !== "null") {
       try {
         const res = await fetch(back_url + '/front/api/data', {
           method: 'POST',
@@ -89,16 +102,15 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            device_id: now_device_id.value   // ← 发送 device_id
+            device_id: now_device_info.value.id   // ← 发送 device_id
           })
         })
         if (!res.ok) {
           throw new Error('Network error')
         }
         const json = await res.json()
-        now_device_id.value = json.device_id
-        if (!device_ids.value.includes(now_device_id.value)) {
-          device_ids.value.push(now_device_id.value)
+        if (!device_ids.value.includes(now_device_info.value.id)) {
+          device_ids.value.push(now_device_info.value.id)
         }
         data.value = json
       } catch (err) {
@@ -107,7 +119,7 @@
     }
   }
   onMounted(() => {
-    if (now_device_id.value !== "") {
+    if (now_device_info.value.id !== "") {
       fetchData()
       timer = setInterval(fetchData, 2000)
     }
@@ -123,28 +135,26 @@
   <div class="dashboard">
     <div class="button-column">
       <button @click="updateDevices" class="refresh-button">刷新设备</button>
-      
-      <button
-          class="device-id-button"
-          :class="{ active: id === now_device_id }"
-          v-for="id in device_ids"
-          :key="id"
-          @click="selectDevice(id)">
+      <h5>已添加设备:</h5>
+      <button class="device-id-button" :class="{ active: id === now_device_info.id }"
+              v-for="id in device_ids" :key="id" @click="selectDevice(id)">
         {{ device_notes.get(id) }}
       </button>
+      <h5>新设备:</h5>
+      <h6 v-for = "id in new_device_ids" >{{id}}</h6>
     </div>
     
     <div class="content-panel">
-      
+      <div v-if = "now_device_info.id != 'null'">
       <h2>🌿 环境监测面板</h2>
-      <h3>当前设备ID: {{ now_device_id || '未选择设备' }}</h3>
-      <h3>当前设备备注: {{ device_notes.get(now_device_id) || '未选择设备' }}</h3> <div>
-      <input v-model="device_note" placeholder="备注信息"/>
-      <button @click="noteDevice">提交</button>
-    </div>
+      <h3>设备ID: {{ now_device_info.id || '未选择设备' }}</h3>
+      <h3>设备名称: {{ now_device_info.name || '未选择设备' }}</h3>
+      <h3>详情: {{now_device_info.details || '无'}}</h3>
+      <button>修改信息</button>
       <hr>
-      <div class="info-panel" v-if="data && now_device_id != ''">
-       
+      </div>
+      <div class="info-panel" v-if="data && now_device_info.id != 'null'">
+        
         <div class="item">
           <strong>水泵状态</strong>
           <span :class="data.pump_status ? 'on' : 'off'">
@@ -190,7 +200,7 @@
         </div>
       </div>
       
-      <div v-else-if="now_device_id === ''">
+      <div v-else-if="now_device_info.id === 'null'">
         <p style="text-align: center; margin-top: 50px; color: #666;">请先选择或刷新设备列表。</p>
       </div>
     
@@ -219,7 +229,7 @@
     flex-direction: row;
     height: 100vh;
     min-height: 100vh; /* 确保占据整个视口高度 */
-    font-family: var(--font-family-base);
+    font-family: var(--font-family-base), serif;
     background-color: var(--bg-content);
   }
   

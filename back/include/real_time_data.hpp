@@ -5,6 +5,7 @@
 #define REAL_TIME_DATA_HPP
 #include <mutex>
 #include <crow.h>
+#include <shared_mutex>
 #include <nlohmann/json.hpp>
 
 class RealTimeData {
@@ -14,7 +15,8 @@ public:
     ~RealTimeData() = default;
 
     void loadForJson(const crow::json::rvalue &data) {
-        std::scoped_lock lock(m_mutex);
+        std::unique_lock lock(m_mutex);
+        std::cout << data << "\n";
         m_deviceId = data["device_id"].s();
         m_temperature = data["temperature"].d();
         m_humidity = data["humidity"].d();
@@ -29,7 +31,7 @@ public:
     }
 
     nlohmann::json getJson() const {
-        std::scoped_lock lock(m_mutex);
+        std::shared_lock lock(m_mutex);
         nlohmann::json json;
         json["device_id"] = m_deviceId;
         json["temperature"] = m_temperature;
@@ -47,7 +49,7 @@ public:
     }
 
 private:
-    mutable std::mutex m_mutex;
+    mutable std::shared_mutex m_mutex;
     /*
     temperature:float   # 温度
     humidity:float      # 湿度
