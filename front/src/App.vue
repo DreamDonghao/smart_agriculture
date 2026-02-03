@@ -1,60 +1,17 @@
 <script setup lang="ts">
+  import {onBeforeUnmount, onMounted, ref} from 'vue'
+  import {nowDeviceInfoStore} from "./stores/now_device_info.ts";
+  import device_list from "./components/device_list.vue"
+  import device_info from "./components/device_info.vue"
   
   let back_url = "http://127.0.0.1:18080"
-  import {onBeforeUnmount, onMounted, ref} from 'vue'
-  
-  let now_device_info = ref({
-    id:"null",name:"null",details:"null"
-  })
-  
-  async function getDeviceInfo(id:string){
-    const res = await fetch(back_url+"/front/api/get_device_info/"+id,);
-    try{
-      if(!res.ok){
-        throw new Error("error")
-      }
-      now_device_info.value = await res.json()
-    }catch(err){
-      console.log(err);
-    }
-  }
-  
-  let device_ids = ref<Array<string>>([]);
-  let device_notes = ref<Map<string, string>>(new Map());
-  let new_device_ids = ref<Array<string>>([]);
-  function updateDevices(): void {
-    const fetchData = async () => {
-      try {
-        const res = await fetch(back_url + '/front/api/get_all_device_ids');
-        if (!res.ok) throw new Error('Network error');
-        const json = await res.json();
-        device_ids.value = json.devices;
-        new_device_ids.value = json.new_deviceIds;
-        device_notes.value.clear(); // 先清空旧数据
-        for (let i = 0; i < json.devices.length; ++i) {
-          const id = json.devices[i];
-          const note = json.notes[i] || id;  // 防止没有 note
-          device_notes.value.set(id, note);
-        }
-      } catch (err) {
-        console.error('获取数据失败:', err);
-      }
-    }
-    fetchData();
-  }
-  
-  
+  const now_device_info = nowDeviceInfoStore()
   
   function selectDevice(id: string) {
-    getDeviceInfo(id)
     fetchData() // 立即获取一次
     if (timer) clearInterval(timer)
-    timer = setInterval(fetchData, 2000)
+    
   }
-  
-  updateDevices();
-  
-  let device_note = ref<string>("")
   
   async function noteDevice() {
     const res = await fetch(back_url + "/front/api/note_device", {
@@ -63,7 +20,7 @@
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        device_id: now_device_info.value.id,
+        device_id: now_device_info.deviceID,
         device_note: device_note.value
       })
     })
@@ -94,7 +51,7 @@
   let timer: ReturnType<typeof setInterval> | null = null
   
   const fetchData = async () => {
-    if (now_device_info.value.id !== "null") {
+    if (now_device_info.deviceID !== "null") {
       try {
         const res = await fetch(back_url + '/front/api/data', {
           method: 'POST',
@@ -102,24 +59,21 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            device_id: now_device_info.value.id   // ← 发送 device_id
+            device_id: now_device_info.deviceID   // ← 发送 device_id
           })
         })
         if (!res.ok) {
           throw new Error('Network error')
         }
-        const json = await res.json()
-        if (!device_ids.value.includes(now_device_info.value.id)) {
-          device_ids.value.push(now_device_info.value.id)
-        }
-        data.value = json
+        data.value = await res.json()
       } catch (err) {
         console.error('获取数据失败:', err)
       }
     }
   }
   onMounted(() => {
-    if (now_device_info.value.id !== "") {
+    timer = setInterval(fetchData, 2000)
+    if (now_device_info.deviceID !== "") {
       fetchData()
       timer = setInterval(fetchData, 2000)
     }
@@ -128,32 +82,51 @@
   onBeforeUnmount(() => {
     if (timer) clearInterval(timer)
   })
+  
+  const messages = ref([])
+  const inputText = ref('')
+  
+  const sendMessage = async () => {
+    if (!data.value) return // 没有数据就不发送
+    
+    // 拼接环境信息
+    const dataString = `分析植物生张状况：湿度: ${data.value.humidity.toFixed(1)}%, ` +
+        `二氧化碳: ${data.value.co2.toFixed(0)} ppm, ` +
+        `pH: ${data.value.ph.toFixed(2)}, ` +
+        `氮 (N): ${data.value.nitrogen.toFixed(1)} mg/L, ` +
+        `磷 (P): ${data.value.phosphorus.toFixed(1)} mg/L, ` +
+        `钾 (K): ${data.value.potassium.toFixed(1)} mg/L`
+    
+    
+    // 用户消息显示
+    messages.value.push({ from: '你', text: dataString })
+    
+    try {
+      const response = await fetch(back_url + '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: dataString }) // 注意字段名 chat
+      })
+      
+      if (!response.ok) throw new Error('请求失败')
+      
+      const resData = await response.json()
+      messages.value.push({ from: 'AI', text: resData.reply })
+      
+    } catch (err) {
+      messages.value.push({ from: '系统', text: '发送失败' })
+      console.error(err)
+    }
+  }
 
 </script>
 
 <template>
   <div class="dashboard">
-    <div class="button-column">
-      <button @click="updateDevices" class="refresh-button">刷新设备</button>
-      <h5>已添加设备:</h5>
-      <button class="device-id-button" :class="{ active: id === now_device_info.id }"
-              v-for="id in device_ids" :key="id" @click="selectDevice(id)">
-        {{ device_notes.get(id) }}
-      </button>
-      <h5>新设备:</h5>
-      <h6 v-for = "id in new_device_ids" >{{id}}</h6>
-    </div>
-    
+    <device_list/>
     <div class="content-panel">
-      <div v-if = "now_device_info.id != 'null'">
-      <h2>🌿 环境监测面板</h2>
-      <h3>设备ID: {{ now_device_info.id || '未选择设备' }}</h3>
-      <h3>设备名称: {{ now_device_info.name || '未选择设备' }}</h3>
-      <h3>详情: {{now_device_info.details || '无'}}</h3>
-      <button>修改信息</button>
-      <hr>
-      </div>
-      <div class="info-panel" v-if="data && now_device_info.id != 'null'">
+      <device_info/>
+      <div class="info-panel" v-if="data && now_device_info.deviceID != 'null'">
         
         <div class="item">
           <strong>水泵状态</strong>
@@ -197,6 +170,23 @@
         <div class="item">
           <strong>钾 (K) mg/L</strong>
           <span>{{ data.potassium.toFixed(1) }}</span>
+        </div>
+        
+        <div class="dialog-container">
+          <div class="chat-window">
+            <div v-for="(msg, index) in messages" :key="index" class="message">
+              <strong>{{ msg.from }}:</strong> {{ msg.text }}
+            </div>
+          </div>
+          
+          <div class="input-area">
+            <input
+                v-model="inputText"
+                @keyup.enter="sendMessage"
+                placeholder="输入消息..."
+            />
+            <button @click="sendMessage">发送</button>
+          </div>
         </div>
       </div>
       
@@ -362,38 +352,6 @@
       flex-direction: column;
       height: auto; /* 允许根据内容自然撑开 */
       min-height: 100vh;
-    }
-    
-    /* 侧边栏按钮栏的调整 (横向滚动) */
-    .button-column {
-      flex: 0 0 auto;
-      width: 100%;
-      border-right: none;
-      border-bottom: 1px solid var(--border-color);
-      
-      /* 重点：确保它是横向 flex 容器 */
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      
-      /* 设定最大高度并允许横向滚动，确保它只占据一行 */
-      max-height: 80px; /* 明确设定最大高度，防止其过高 */
-      overflow-x: auto;
-      overflow-y: hidden; /* 隐藏垂直滚动 */
-      
-      justify-content: flex-start;
-      padding: 0.5rem;
-      -webkit-overflow-scrolling: touch;
-    }
-    
-    /* 隐藏滚动条 */
-    .button-column::-webkit-scrollbar {
-      display: none;
-    }
-    
-    .button-column {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
     }
     
     /* 移动端按钮样式 */

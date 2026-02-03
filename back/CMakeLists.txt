@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.22)
-project(smart_agriculture LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.31.6)
+project(smart_agriculture)
 
 set(CMAKE_CXX_STANDARD 20)
 
-find_package(Crow CONFIG REQUIRED)
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(httplib CONFIG REQUIRED)
 find_package(unofficial-mysql-connector-cpp CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 
@@ -32,10 +32,17 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
         endif()
         add_executable(smart_agriculture src/main.cpp)
 
-        target_link_libraries(smart_agriculture PRIVATE Crow::Crow asio::asio)
-        target_link_libraries(smart_agriculture PRIVATE unofficial::sqlite3::sqlite3)
+        target_link_libraries(smart_agriculture PRIVATE httplib::httplib)
         target_link_libraries(smart_agriculture PRIVATE unofficial::mysql-connector-cpp::connector)
         target_link_libraries(smart_agriculture PRIVATE OpenSSL::Crypto)
+        target_link_libraries(
+                smart_agriculture
+                PRIVATE
+                OpenSSL::SSL
+                OpenSSL::Crypto
+                ws2_32
+                crypt32
+        )
         set_target_properties(smart_agriculture PROPERTIES OUTPUT_NAME "smart_agriculture_win_x86-64")
     endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -46,8 +53,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         )
 
         # vcpkg 的库
-        target_link_libraries(smart_agriculture PRIVATE Crow::Crow asio::asio)
-        target_link_libraries(smart_agriculture PRIVATE unofficial::sqlite3::sqlite3)
+        target_link_libraries(smart_agriculture PRIVATE httplib::httplib)
         target_link_libraries(smart_agriculture PRIVATE unofficial::mysql-connector-cpp::connector)
 
         # protobuf 明确链接

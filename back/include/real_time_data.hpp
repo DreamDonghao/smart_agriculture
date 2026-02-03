@@ -3,35 +3,41 @@
 //
 #ifndef REAL_TIME_DATA_HPP
 #define REAL_TIME_DATA_HPP
+
 #include <mutex>
-#include <crow.h>
 #include <shared_mutex>
+#include <iostream>
 #include <nlohmann/json.hpp>
 
 class RealTimeData {
 public:
     RealTimeData() = default;
-
     ~RealTimeData() = default;
 
-    void loadForJson(const crow::json::rvalue &data) {
+    // 使用 nlohmann::json 加载数据
+    void loadForJson(const nlohmann::json &data) {
         std::unique_lock lock(m_mutex);
-        std::cout << data << "\n";
-        m_deviceId = data["device_id"].s();
-        m_temperature = data["temperature"].d();
-        m_humidity = data["humidity"].d();
-        m_ph = data["ph"].d();
-        m_nitrogen = data["nitrogen"].d();
-        m_phosphorus = data["phosphorus"].d();
-        m_potassium = data["potassium"].d();
-        m_light = data["light"].d();
-        m_co2 = data["co2"].d();
-        m_fanStatus = data["fan_status"].i();
-        pump_status = data["pump_status"].i();
+
+        // 可选打印调试
+        std::cout << data.dump() << std::endl;
+
+        m_deviceId = data.value("device_id", "");
+        m_temperature = data.value("temperature", 0.0);
+        m_humidity = data.value("humidity", 0.0);
+        m_ph = data.value("ph", 0.0);
+        m_nitrogen = data.value("nitrogen", 0.0);
+        m_phosphorus = data.value("phosphorus", 0.0);
+        m_potassium = data.value("potassium", 0.0);
+        m_light = data.value("light", 0.0);
+        m_co2 = data.value("co2", 0.0);
+        m_fanStatus = data.value("fan_status", 0);
+        pump_status = data.value("pump_status", 0);
     }
 
+    // 转成 nlohmann::json
     nlohmann::json getJson() const {
         std::shared_lock lock(m_mutex);
+
         nlohmann::json json;
         json["device_id"] = m_deviceId;
         json["temperature"] = m_temperature;
@@ -50,15 +56,7 @@ public:
 
 private:
     mutable std::shared_mutex m_mutex;
-    /*
-    temperature:float   # 温度
-    humidity:float      # 湿度
-    ph:float            # PH
-    nitrogen:float      # 氮
-    phosphorus:float    # 磷
-    potassium:float     # 钾
-    light:float         # 光照强度
-    */
+
     std::string m_deviceId;
     double m_temperature = 0.0;
     double m_humidity = 0.0;
@@ -72,5 +70,4 @@ private:
     int64_t pump_status = 0;
 };
 
-
-#endif //REAL_TIME_DATA_HPP
+#endif // REAL_TIME_DATA_HPP
